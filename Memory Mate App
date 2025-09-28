@@ -1,0 +1,155 @@
+Memory Mate App (Generative AI Project)
+
+This project is a prototype built for Code Fusion Hackathon 2025. The Memory Mate App is designed to support patients with dementia or memory challenges, along with their families and caregivers.
+
+Features:
+
+1.	Family & Friends Tab 🖼️ → Store names and notes with text-to-speech support to help recall memories.
+
+2.	Emergency Info Tab 📞 → Save emergency contacts for quick access during critical moments.
+
+3.	Geofencing Tab 📍 → Define safe zones and simulate alerts when patients leave the boundary.
+
+Impact:
+
+1.	Helps patients with memory recall and independence.
+
+2.	Provides families with peace of mind and quick emergency access.
+
+3.	Assists the medical field with potential real-time monitoring and patient support.
+
+
+
+Future Enhancements:
+
+1.	Medication reminders
+
+2.	Wearable device integration
+
+3.	Real-time geofence alerts
+
+4.	Hospital/caregiver dashboards
+
+---------------------------------------
+Requirements.txt
+----------------------------------------
+
+gradio>=3.30
+Pillow
+gTTS==2.3.0
+
+---------------------------------------
+
+App.py
+---------------------------------------
+import gradio as gr
+from gtts import gTTS
+import tempfile
+import os
+import math
+
+# Memory store
+gallery_items = []
+emergency_info = {"number": "", "address": ""}
+
+# Save temporary TTS audio
+def text_to_speech(text):
+    if not text:
+        return None
+    tts = gTTS(text)
+    tmp_path = os.path.join(tempfile.gettempdir(), "tts_output.mp3")
+    tts.save(tmp_path)
+    return tmp_path
+
+# Add picture + note
+def add_picture(img, name, note):
+    if img is None or not name:
+        return [item["img"] for item in gallery_items], "⚠️ Please provide both name and image."
+    gallery_items.append({"img": img, "name": name, "note": note})
+    return [item["img"] for item in gallery_items], "✅ Added successfully!"
+
+# Show text + speak aloud
+def show_picture_info(evt: gr.SelectData):
+    idx = evt.index
+    if idx < 0 or idx >= len(gallery_items):
+        return "⚠️ Could not identify the selected photo.", None
+    item = gallery_items[idx]
+    caption = f"{item['name']}: {item['note']}"
+    audio_file = text_to_speech(caption)
+    return caption, audio_file  # text + audio path
+
+# Save emergency info
+def save_emergency(number, address):
+    emergency_info["number"] = number
+    emergency_info["address"] = address
+    return f"✅ Emergency info saved!\n📞 {number}\n🏠 {address}"
+
+# Haversine distance in meters
+def haversine_m(lat1, lon1, lat2, lon2):
+    R = 6371000  # meters
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+# Check geofence
+def check_geofence(center_lat, center_lon, radius_m, test_lat, test_lon):
+    try:
+        d = haversine_m(center_lat, center_lon, test_lat, test_lon)
+        inside = d <= radius_m
+        if inside:
+            return f"✅ Inside safe zone (Distance: {d:.1f} m)"
+        else:
+            return f"⚠️ Outside safe zone! (Distance: {d:.1f} m)"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+# Build UI
+with gr.Blocks() as demo:
+    gr.Markdown("## 🧠 Memory Helper App")
+
+    with gr.Tab("Family & Friends"):
+        with gr.Row():
+            with gr.Column():
+                img_in = gr.Image(type="filepath", label="Upload Photo")
+                name_in = gr.Textbox(label="Name")
+                note_in = gr.Textbox(label="Note / Relation")
+                add_btn = gr.Button("Add to Album")
+                status = gr.Textbox(label="Status", interactive=False)
+            with gr.Column():
+                gallery = gr.Gallery(label="Click a photo to hear note", columns=3, height="auto")
+                selected_info = gr.Textbox(label="Selected Info", interactive=False)
+                tts_output = gr.Audio(label="Speaking Note", autoplay=True)
+
+        add_btn.click(add_picture, [img_in, name_in, note_in], [gallery, status])
+        gallery.select(show_picture_info, None, [selected_info, tts_output])
+
+    with gr.Tab("Emergency Info"):
+        with gr.Row():
+            with gr.Column():
+                num_in = gr.Textbox(label="Emergency Contact Number")
+                addr_in = gr.Textbox(label="Home Address")
+                save_btn = gr.Button("Save Info")
+                save_status = gr.Textbox(label="Saved Info", interactive=False)
+
+        save_btn.click(save_emergency, [num_in, addr_in], save_status)
+
+    with gr.Tab("Geofencing Simulator"):
+        gr.Markdown("### Define Safe Zone and Test Location")
+        with gr.Row():
+            with gr.Column():
+                center_lat = gr.Number(label="Safe Zone Center Latitude", value=37.7749)
+                center_lon = gr.Number(label="Safe Zone Center Longitude", value=-122.4194)
+                radius_m = gr.Slider(label="Radius (meters)", value=500, minimum=50, maximum=5000, step=50)
+            with gr.Column():
+                test_lat = gr.Number(label="Test Latitude", value=37.7750)
+                test_lon = gr.Number(label="Test Longitude", value=-122.4180)
+                check_btn = gr.Button("Check Location")
+                geo_status = gr.Textbox(label="Result", interactive=False)
+
+        check_btn.click(check_geofence, [center_lat, center_lon, radius_m, test_lat, test_lon], geo_status)
+
+demo.launch()
+
+
